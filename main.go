@@ -46,8 +46,8 @@ func main() {
 		fmt.Fprint(w, "ok")
 	})
 
-	fmt.Println("Listening on port 80")
-	http.ListenAndServe(":80", nil)
+	fmt.Println("Listening on port " + strconv.Itoa(config.Port))
+	http.ListenAndServe(":"+strconv.Itoa(config.Port), nil)
 }
 
 func HandleNewMessage(json *sjson.Json) {
