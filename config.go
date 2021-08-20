@@ -24,6 +24,7 @@ type TShockConfig struct {
 	Settings struct {
 		ApplicationRestTokens map[string](map[string]int)
 	}
+	ApplicationRestTokens map[string](map[string]int)
 }
 
 func MakeDefaultConfig() Config {
@@ -56,8 +57,14 @@ func LoadConfig() Config {
 	jsondata, _ := ioutil.ReadAll(file)
 	json.Unmarshal(jsondata, &config)
 
-	if config.TShockConfig == "" {
+	if config.RestUrl == "" {
+		fmt.Println("RestUrl is not set")
+		os.Exit(2)
+	} else if config.TShockConfig == "" {
 		fmt.Println("TShockConfig is not set")
+		os.Exit(2)
+	} else if config.VKToken == "" {
+		fmt.Println("VKToken is not set")
 		os.Exit(2)
 	}
 
@@ -82,7 +89,15 @@ func LoadTShockTokens(path string, config *Config) {
 	var tshockConfig TShockConfig
 	json.Unmarshal(data, &tshockConfig)
 
-	for k, v := range tshockConfig.Settings.ApplicationRestTokens {
+	// TShock changed config format in 4.5, so script needs to check both prior and newer config paths
+	var tokens map[string](map[string]int)
+	if len(tshockConfig.Settings.ApplicationRestTokens) != 0 {
+		tokens = tshockConfig.Settings.ApplicationRestTokens
+	} else {
+		tokens = tshockConfig.ApplicationRestTokens
+	}
+
+	for k, v := range tokens {
 		userId := v["VKId"]
 
 		if userId == 0 {
