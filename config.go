@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -50,26 +51,30 @@ func LoadConfig() Config {
 		fmt.Println("Config not found. Created default.")
 	}
 
-	fmt.Println("Loaded config.")
 	defer file.Close()
 
 	jsondata, _ := ioutil.ReadAll(file)
 	json.Unmarshal(jsondata, &config)
 
-	if config.TShockConfig != "" {
-		LoadTShockTokens(config.TShockConfig, &config)
+	if config.TShockConfig == "" {
+		fmt.Println("TShockConfig is not set")
+		os.Exit(2)
 	}
+
+	LoadTShockTokens(config.TShockConfig, &config)
 
 	// Make sure RestUrl does not end with /
 	config.RestUrl = strings.TrimSuffix(config.RestUrl, "/")
 
+	fmt.Println("Loaded config.")
 	return config
 }
 
 func LoadTShockTokens(path string, config *Config) {
 	file, err := os.Open(path)
 	if err != nil {
-		panic(err)
+		fmt.Println(err.Error())
+		os.Exit(2)
 	}
 	defer file.Close()
 
@@ -84,6 +89,7 @@ func LoadTShockTokens(path string, config *Config) {
 			continue
 		}
 
+		fmt.Println("Loaded tshock token for " + strconv.Itoa(userId))
 		config.VKUserTokens[userId] = k
 	}
 }

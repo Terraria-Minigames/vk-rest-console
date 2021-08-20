@@ -24,6 +24,7 @@ func main() {
 		json, err := sjson.NewFromReader(r.Body)
 		if err != nil {
 			fmt.Fprintf(w, "500")
+			return
 		}
 
 		secret, _ := json.Get("secret").String()
@@ -52,54 +53,60 @@ func main() {
 
 func HandleNewMessage(json *sjson.Json) {
 	text, _ := json.Get("object").Get("message").Get("text").String()
-	from_id, _ := json.Get("object").Get("message").Get("from_id").Int()
+	fromId, _ := json.Get("object").Get("message").Get("from_id").Int()
 
 	// If isn't a valid command
 	if !strings.HasPrefix(text, "/") {
 		return
 	}
 
-	if resttoken, ok := config.VKUserTokens[from_id]; ok {
-		qs := &url.Values{}
-		qs.Add("token", resttoken)
-		qs.Add("cmd", text)
+	resttoken, ok := config.VKUserTokens[fromId]
 
-		resp, err := requests.Get(config.RestUrl+"/v3/server/rawcmd", qs, nil)
-		if err != nil {
-			SendVKMessage("Server request failed.", from_id) // Sending back err.Error() expsoses token
-			return
-		}
-
-		json, err := sjson.NewJson(resp.Raw().Bytes())
-		if err != nil {
-			SendVKMessage("Failed parsing server response.\n"+err.Error(), from_id)
-			return
-		}
-
-		if response, err := json.Get("response").StringArray(); err == nil {
-			if len(response) > 0 {
-				result := strings.Join(response, "\n")
-				SendVKMessage(result, from_id)
-			} else {
-				SendVKMessage("Command didn't return output.", from_id)
-			}
-
-			fmt.Println("id" + strconv.Itoa(from_id) + " executed " + text)
-		}
+	if !ok {
+		fmt.Println("id" + strconv.Itoa(fromId) + " tried to execute " + text)
+		return
 	}
+
+	qs := &url.Values{}
+	qs.Add("token", resttoken)
+	qs.Add("cmd", text)
+
+	resp, reqerr := requests.Get(config.RestUrl+"/v3/server/rawcmd", qs, nil)
+	if reqerr != nil {
+		SendVKMessage("Server request failed.", fromId) // Sending back err.Error() expsoses token
+		return
+	}
+
+	json, jsonerr := sjson.NewJson(resp.Raw().Bytes())
+	if jsonerr != nil {
+		SendVKMessage("Failed parsing server response.\n"+jsonerr.Error(), fromId)
+		return
+	}
+
+	if response, err := json.Get("response").StringArray(); err == nil {
+		if len(response) > 0 {
+			result := strings.Join(response, "\n")
+			SendVKMessage(result, fromId)
+		} else {
+			SendVKMessage("Command didn't return output.", fromId)
+		}
+
+		fmt.Println("id" + strconv.Itoa(fromId) + " executed " + text)
+	}
+
 }
 
-func SendVKMessage(text string, user_id int) {
+func SendVKMessage(text string, userId int) {
 	qs := &url.Values{}
 	qs.Add("message", text)
 	qs.Add("access_token", config.VKToken)
 	qs.Add("keyboard", config.VKKeyboard)
-	qs.Add("user_id", strconv.Itoa(user_id))
+	qs.Add("user_id", strconv.Itoa(userId))
 	qs.Add("random_id", strconv.Itoa(int(time.Now().UnixNano())))
 	qs.Add("v", "5.131")
 	resp, err := requests.Get("https://api.vk.com/method/messages.send", qs, nil)
 	if err != nil {
-		fmt.Println("Error occured when sending VK message to id " + strconv.Itoa(user_id) + ": " + text)
+		fmt.Println("Error occured when sending VK message to id " + strconv.Itoa(userId) + ": " + text)
 		fmt.Println(err.Error())
 		fmt.Println(resp.Text())
 	}
