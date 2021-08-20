@@ -66,13 +66,13 @@ func HandleNewMessage(json *sjson.Json) {
 
 		resp, err := requests.Get(config.RestUrl+"/v3/server/rawcmd", qs, nil)
 		if err != nil {
-			SendVKMessage("[Server request failed]\n"+err.Error(), from_id)
+			SendVKMessage("Server request failed.", from_id) // Sending back err.Error() expsoses token
 			return
 		}
 
 		json, err := sjson.NewJson(resp.Raw().Bytes())
 		if err != nil {
-			SendVKMessage("[Server didn't return anything]\n"+err.Error(), from_id)
+			SendVKMessage("Failed parsing server response.\n"+err.Error(), from_id)
 			return
 		}
 
@@ -81,8 +81,9 @@ func HandleNewMessage(json *sjson.Json) {
 				result := strings.Join(response, "\n")
 				SendVKMessage(result, from_id)
 			} else {
-				SendVKMessage("[No responce]", from_id)
+				SendVKMessage("Command didn't return output.", from_id)
 			}
+
 			fmt.Println("id" + strconv.Itoa(from_id) + " executed " + text)
 		}
 	}
