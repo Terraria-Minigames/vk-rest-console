@@ -54,13 +54,13 @@ tshock's `config.json`
 our `config.json`
 ```json
 {
-	"Port": 80,
-	"RestUrl": "http://localhost:7878",
-	"TShockConfig": "C:/Users/Admin/server/tshock/config.json",
-	"VKConfirmationToken": "ba7bf260",
-	"VKSecret": "3vUA8FBVJLpjjQd37ZxqZVFLRi93rRuC",
-	"VKKeyboard": "",
-	"VKToken": "a9eabd3ef76be720606e010107a339e203fe2cid81b67715ebaf823e8e52380f634516850cf0ab8344bb1"
+  "Port": 80,
+  "RestUrl": "http://localhost:7878",
+  "TShockConfig": "C:/Users/Admin/server/tshock/config.json",
+  "VKConfirmationToken": "ba7bf260",
+  "VKSecret": "3vUA8FBVJLpjjQd37ZxqZVFLRi93rRuC",
+  "VKKeyboard": "",
+  "VKToken": "a9eabd3ef76be720606e010107a339e203fe2cid81b67715ebaf823e8e52380f634516850cf0ab8344bb1"
 }
 ```
 
