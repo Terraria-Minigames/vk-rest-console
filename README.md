@@ -52,7 +52,7 @@ tshock's `config.json`
 ```
 
 our `config.json`
-```
+```json
 {
 	"Port": 80,
 	"RestUrl": "http://localhost:7878",
