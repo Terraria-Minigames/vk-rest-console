@@ -96,5 +96,10 @@ func SendVKMessage(text string, user_id int) {
 	qs.Add("user_id", strconv.Itoa(user_id))
 	qs.Add("random_id", strconv.Itoa(int(time.Now().UnixNano())))
 	qs.Add("v", "5.131")
-	requests.Get("https://api.vk.com/method/messages.send", qs, nil)
+	resp, err := requests.Get("https://api.vk.com/method/messages.send", qs, nil)
+	if err != nil {
+		fmt.Println("Error occured when sending VK message to id " + strconv.Itoa(user_id) + ": " + text)
+		fmt.Println(err.Error())
+		fmt.Println(resp.Text())
+	}
 }
