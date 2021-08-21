@@ -2,10 +2,10 @@
 Bring tshock console to your server staff without giving them access to host machine.
 
 ## Setup guide.
-Run the binary, close it. It will generate `config.json`, which you will use to set up your everything.
-
 ### 0. Download
 Go to [releases tab](https://github.com/btvoidx/vk-rest-console/releases), download binary for your os (windows or linux, because who the hell hosts professional tshock servers from mac), place it somewhere on the same machine as your tshock server.
+
+Run the binary. It will generate default `config.json` and error-out, which is okay.
 
 ### 1. Obtain VK Group token
 Go to your VK group, click *Manage*, head to *Settings* > *API usage*.
