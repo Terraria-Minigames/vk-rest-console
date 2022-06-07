@@ -1,6 +1,8 @@
 ## VK Rest Console
 Bring tshock console to your server staff without giving them access to host machine.
 
+[Гайд по настройке на русском языке.](/README_RU.md)
+
 ## Setup guide.
 ### 0. Download
 Go to [releases tab](https://github.com/btvoidx/vk-rest-console/releases), download binary for your os (windows or linux, because who the hell hosts professional tshock servers from mac), place it somewhere on the same machine as your tshock server.
@@ -74,7 +76,7 @@ Possible values:
 - `"VKConfirmationToken": ""` - string - "String to be returned" value from VK callback api server setup screen.
 - `"VKSecret": ""` - string - "Secret key" which is sent with every request by VK.
 - `"VKKeyboard": ""` - string - [Keyboard object](https://vk.com/dev/bots_docs_3) to be sent with all messages.
-- `"VKToken": ""` - string - Group Access Token with **community messages** access
+- `"VKToken": ""` - string - Group Access Token with **community messages** access.
 
 ## Contribute
 Open a new issue or DM me wherever you want to suggest changes or report issues.
