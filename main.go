@@ -31,7 +31,7 @@ func main() {
 
 	config, err := LoadConfig(*configPath, true)
 	if err != nil {
-		fmt.Printf("Failed to load config from (%q): %v\n", *configPath, err)
+		fmt.Printf("Failed to load config from %q: %v\n", *configPath, err)
 		os.Exit(1)
 	}
 

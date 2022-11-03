@@ -27,6 +27,7 @@ tasks:
     vars:
       GOOS: '{{default "windows" .GOOS}}'
       GOARCH: '{{default "amd64" .GOARCH}}'
+    env: {GOOS: "{{.GOOS}}", GOARCH: "{{.GOARCH}}"}
 
   clean:
     cmds:
