@@ -1,82 +1,87 @@
 ## VK Rest Console
-Bring tshock console to your server staff without giving them access to host machine.
+Дайте вашему стаффу серверную консоль без необходимости давать доступ к хосту.
 
-[Гайд по настройке на русском языке.](/README_RU.md)
+## Гайд по настройке.
+### 0. Скачиваем
+Откройте [страницу релизов](https://github.com/btvoidx/vk-rest-console/releases), скачайте бинарник для вашей ОС, 
+закиньте куда-угодно на ту же машину, где держите tshock сервер. Запустите. Будет создан стандартный `config.yaml`, 
+а потом программа выйдет.
 
-## Setup guide.
-### 0. Download
-Go to [releases tab](https://github.com/btvoidx/vk-rest-console/releases), download binary for your os (windows or linux, because who the hell hosts professional tshock servers from mac), place it somewhere on the same machine as your tshock server.
+### 1. Получаем токен группы ВК и подключаем Callback API
+Заходим в группу, жмём **Управление**, затем **Настройки** > **Работа с API**.
 
-Run the binary. It will generate default `config.json` and error-out, which is okay.
+Во вкладке **Ключи доступа** жмём *Создать ключ*, отмечаем галочку *Разрешить приложению доступ к сообщениям сообщества*, 
+жмём *Создать*. Копируем созданный ключ и записываем его в `config.yaml` значением для поля `Token`
 
-### 1. Obtain VK Group token
-Go to your VK group, click *Manage*, head to *Settings* > *API usage*.
+Во кладке **Callback API** жмём *Добавить сервер*.
+- Ставим **Версию API** на **5.131**.
+- Ставим **Адрес** на адрес вашего сервера.
+- Ставим в **Секретный ключ** любое сложноугадываемое значение.
 
-In **Access tokens** tab press *Create token* button, check the checkmark near *Allow access to community messages* line, press *Create*. Copy created token and place it into `config.json` as a value for `"VKToken"`.
+Записываем **Секретный ключ** в `config.yaml` значением поля `Secret`. Делаем то же самое для значения 
+**Строки, которую должен вернуть сервер** значением для `ConfirmationToken`.
 
-### 2. Set up callback api
-Go to your VK group, click *Manage*, head to *Settings* > *API usage*.
-In **Callback API** tab press *Add server* button.
-- Set **API version** to **5.131**.
-- Set **URL** to url to your server.
-- Set **Secret key** to any hard-to-guess string.
+### 2. Настраиваем конфиг TShock
+Полем для `TShockConfigPath` в `config.yaml` ставим **абсолютный путь** до `config.json` tshock-а. Примеры парой
+заголовков ниже. В `config.json` tshock-а настраиваем `"ApplicationRestTokens"` в соответствии
+[с официальном гайдом tshock](https://tshock.readme.io/reference/rest-api-endpoints#setting-it-all-up).
 
-Place **Secret key** into `config.json` as a value for `"VKSecret"`. Do the same to **String to be returned** value as a value for `"VKConfirmationToken"`.
+После того, как сделали это, нужно добавить `"VKId": {АЙДИ_АККАУНТА}` к каждому токену, который нужно будет 
+использовать через сообщения группы в ВК.
 
-### 3. Set up TShock config
-Set `"TShockConfig"` in `config.json` (*not* tshock one yet, it may get confusing) to **absoulte path** to your *tshock* `config.json`. Examples below.
+### 3. Используем
+Если всё сделано правильно, любой пользователь, чей id был приставлен к токену tshock, теперь может просто писать 
+команды в личные сообщения группы, и они будут выполнены. 
 
-In your *tshock* `config.json` modify `"ApplicationRestTokens"` accordingly to [tshock official guide](https://tshock.readme.io/reference/rest-api-endpoints#setting-it-all-up).
+Учитывайте, что команды, которые нельзя выполнить из обычной консоли TShock, так же нельзя выполнить через ВК.
 
-After you've done that, add `"VKId": {VK_PROFILE_ID}` to each token you want to be executable from VK.
+### Примеры
+`config.yaml`
+```yaml
+  Port: 80
+  TShockConfigPath: "C:/Users/Admin/server/tshock/config.json"
+  CommandPrefix: "/" # Если оставить пустым, его возьмёт из конфига тишока
+  RestAddr: "http://127.0.0.1:7878" # Если оставить пустым, возьмёт как "http://127.0.0.1:{port}", где {port} взят из конфига TShock
+  VK:
+    Token: "a9eabd3ef76be720606e010107a339e203fe2cid81b67715ebaf823e8e52380f634516850cf0ab8344bb1"
+    ConfirmationToken: "ba7bf260"
+    Secret: "3vUA8FBVJLpjjQd37ZxqZVFLRi93rRuC"
+  Messages:
+    NoCommandOutput: "Команда ничего не вернула"
+    RestRequestFailed: "Не удалось выполнить команду, гляньте логи"
+```
 
-### 4. Use
-If everything is done correctly, anyone whos ids you assigned to tshock application rest tokens is now able to simply DM commands to you group, and they'll get executed. Try it: `/help`.
-
-Be aware, that commands which do not work from normal TShock console will not work here either.
-
-### Examples
-tshock's `config.json`
+`config.json` tshock-а
 ```json
-...
 "ApplicationRestTokens": {
   "my_very_own_and_very_secret_rest_token": {
     "Username": "btvoidx",
     "UserGroupName": "superadmin",
     "VKId": 187569882
   },
-  "not_mine_and_not_so_secret_rest_token": {
+  "not_my_own_and_not_so_secret_rest_token": {
     "Username": "Nikita Matrosoff",
     "UserGroupName": "supersuperadmin",
     "VKId": 206352149
   }
 }
 ```
+## Настройка
+Перезапустите программку после редактирования настроек для их применения.
 
-our `config.json`
-```json
-{
-  "Port": 80,
-  "RestUrl": "http://localhost:7878",
-  "TShockConfig": "C:/Users/Admin/server/tshock/config.json",
-  "VKConfirmationToken": "ba7bf260",
-  "VKSecret": "3vUA8FBVJLpjjQd37ZxqZVFLRi93rRuC",
-  "VKKeyboard": "",
-  "VKToken": "a9eabd3ef76be720606e010107a339e203fe2cid81b67715ebaf823e8e52380f634516850cf0ab8344bb1"
-}
-```
+Все поля и их значения:
+- `Port` - число - порт, на котором запускать Callback API сервер. Для запуска за прокси, например Nginx.
+- `TShockConfigPath` - строка - путь до `config.json` tshock-сервера.
+- `CommandPrefix` - строка - префикс команд. Если оставить пустым, возьмёт из конфига tshock.
+- `RestAddr` - строка - адрес REST Api tshock-сервера. Если оставить пустым, возьмёт порт из конфига tshock.
+- `RemoveChatTags` - булевое - пытаться ли вырезать теги цвета и предметов из ответов на команды.
+- `VK`
+  - `ConfirmationToken` - строка - код, который требует ВК для подтверждения Callback API сервера.
+  - `Secret` - строка - секретный код, который посылается ВК для подверждения достоверности запросов.
+  - `Token` - строка - токен группы с доступом к сообщениям.
+- `Messages`
+  - `NoCommandOutput` - строка - текст сообщения, которое оправляется, если команда не вернула ответа.
+  - `RestRequestFailed` - строка - текст сообщения, которое отправляется, если не удалось связаться с REST Api tshock.
 
-## Configuration
-Restart binary after editing config for changes to apply.
-
-Possible values:
-- `"Port": 80` - int - Changes port on which http server is running. Useful when running with proxy, like Nginx.
-- `"RestUrl": "http://localhost:7878"` - string - Base URI for your TShock REST api.
-- `"TShockConfig": ""` - string - Absoulte path to your tshock `config.json`.
-- `"VKConfirmationToken": ""` - string - "String to be returned" value from VK callback api server setup screen.
-- `"VKSecret": ""` - string - "Secret key" which is sent with every request by VK.
-- `"VKKeyboard": ""` - string - [Keyboard object](https://vk.com/dev/bots_docs_3) to be sent with all messages.
-- `"VKToken": ""` - string - Group Access Token with **community messages** access.
-
-## Contribute
-Open a new issue or DM me wherever you want to suggest changes or report issues.
+## Нашли баг?
+Откройте новый issue!

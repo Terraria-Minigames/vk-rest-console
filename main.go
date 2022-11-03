@@ -1,113 +1,226 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	sjson "github.com/bitly/go-simplejson"
-	requests "github.com/hiroakis/go-requests"
+	"github.com/broothie/qst"
+	"github.com/spf13/pflag"
 )
 
-var config = LoadConfig()
+const ApiVersion = "5.131"
+
+var version = "" // Set during build via -ldflags
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	configPath := pflag.StringP("config-path", "c", "./config.yaml", "path to config.yaml, file name can not be omitted")
+	shouldPrintVersion := pflag.BoolP("version", "v", false, "prints version")
+	pflag.Parse()
+
+	if *shouldPrintVersion {
+		fmt.Printf("%s\n", version)
+		return
+	}
+
+	config, err := LoadConfig(*configPath, true)
+	if err != nil {
+		fmt.Printf("Failed to load config from (%q): %v\n", *configPath, err)
+		os.Exit(1)
+	}
+
+	if err := ValidateConfigValues(config); err != nil {
+		fmt.Printf("%v\n", err)
+		os.Exit(1)
+	}
+
+	tshockConfig, err := LoadTShockConfig(config.TShockConfigPath)
+	if err != nil {
+		fmt.Printf("Could not load read TShock config from (%q): %v\n", config.TShockConfigPath, err)
+		os.Exit(1)
+	}
+
+	if tshockConfig.RestApiEnabled == false {
+		fmt.Printf("Rest API is not enabled in TShock config (%q)\n", config.TShockConfigPath)
+		os.Exit(1)
+	}
+
+	if config.CommandPrefix == "" {
+		config.CommandPrefix = tshockConfig.CommandSpecifier
+	}
+	if config.RestAddr == "" {
+		config.RestAddr = fmt.Sprintf("http://127.0.0.1:%d", tshockConfig.RestApiPort)
+	}
+
+	http.HandleFunc("/", Handler(config, tshockConfig))
+
+	fmt.Printf("Starting callback server on port %d\n", config.Port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil); err != nil {
+		fmt.Printf("Failed to start callback server on port %d: %v\n", config.Port, err)
+		os.Exit(1)
+	}
+}
+
+func Handler(c Config, tc TShockConfig) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		// Deny all requests coming to an invalid path
 		if r.URL.Path != "/" {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		json, err := sjson.NewFromReader(r.Body)
+		req := struct {
+			EventType string `json:"type"`
+			Version   string `json:"v"`
+			Secret    string `json:"secret"`
+			Object    struct {
+				Message struct {
+					FromID    int    `json:"from_id"`
+					PeerID    int    `json:"peer_id"`
+					MessageID int    `json:"id"`
+					Text      string `json:"text"`
+				} `json:"message"`
+			} `json:"object"`
+		}{}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if req.Version != ApiVersion {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "unsupported callback api version; set it to %q", ApiVersion)
+			return
+		}
+
+		if req.Secret != c.VK.Secret {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, "incorrect secret")
+			return
+		}
+
+		if req.EventType == "confirmation" {
+			fmt.Fprintf(w, c.VK.ConfirmationToken)
+			return
+		}
+
+		fmt.Fprintf(w, "ok")
+
+		if req.EventType != "message_new" {
+			return
+		}
+
+		if !strings.HasPrefix(req.Object.Message.Text, c.CommandPrefix) {
+			return
+		}
+
+		for token, d := range tc.ApplicationRestTokens {
+			if d.VKId != req.Object.Message.FromID {
+				continue
+			}
+
+			output, err := ExecRESTCommand(c.RestAddr, token, req.Object.Message.Text)
+			if err != nil {
+				fmt.Printf("Failed to execute %q: %v\n", req.Object.Message.Text, err)
+				if err := SendVKMessage(
+					c.VK.Token,
+					req.Object.Message.PeerID,
+					req.Object.Message.MessageID,
+					c.Messages.RestRequestFailed,
+					c.VK.Keyboard,
+				); err != nil {
+					fmt.Printf("Failed to send VK reply: %v", err)
+				}
+
+				return
+			}
+
+			if output == "" {
+				output = c.Messages.NoCommandOutput
+			}
+
+			if c.RemoveChatTags {
+				output = regexp.MustCompile(`(?:\[c\/.+?:(.+?)\])|(?:\[i:.*?\])`).ReplaceAllString(output, "$1")
+			}
+
+			fmt.Printf("%s (%s) executed %s\n", d.Username, d.UserGroupName, req.Object.Message.Text)
+
+			if err := SendVKMessage(
+				c.VK.Token,
+				req.Object.Message.PeerID,
+				req.Object.Message.MessageID,
+				output,
+				c.VK.Keyboard,
+			); err != nil {
+				fmt.Printf("Failed to send VK reply: %v", err)
+			}
+
+			return
+		}
+	}
+}
+
+func SendVKMessage(token string, peerId, replyTo int, message string, keyboard any) error {
+	kb := ""
+	if keyboard != nil {
+		keyboardBytes, err := json.Marshal(keyboard)
 		if err != nil {
-			fmt.Fprintf(w, "500")
-			return
+			return err
 		}
-
-		secret, _ := json.Get("secret").String()
-		eventtype, _ := json.Get("type").String()
-
-		if secret != config.VKSecret {
-			fmt.Fprint(w, "Nope.")
-			return
-		}
-
-		if eventtype == "confirmation" {
-			fmt.Fprint(w, config.VKConfirmationToken)
-			return
-		}
-
-		if eventtype == "message_new" {
-			go HandleNewMessage(json)
-		}
-
-		fmt.Fprint(w, "ok")
-	})
-
-	fmt.Println("Listening on port " + strconv.Itoa(config.Port))
-	http.ListenAndServe(":"+strconv.Itoa(config.Port), nil)
-}
-
-func HandleNewMessage(json *sjson.Json) {
-	text, _ := json.Get("object").Get("message").Get("text").String()
-	fromId, _ := json.Get("object").Get("message").Get("from_id").Int()
-
-	// If isn't a valid command
-	if !strings.HasPrefix(text, "/") {
-		return
+		kb = string(keyboardBytes)
 	}
 
-	resttoken, ok := config.VKUserTokens[fromId]
-
-	if !ok {
-		fmt.Println("id" + strconv.Itoa(fromId) + " tried to execute " + text)
-		return
-	}
-
-	qs := &url.Values{}
-	qs.Add("token", resttoken)
-	qs.Add("cmd", text)
-
-	resp, reqerr := requests.Get(config.RestUrl+"/v3/server/rawcmd", qs, nil)
-	if reqerr != nil {
-		SendVKMessage("Server request failed.", fromId) // Sending back err.Error() expsoses token
-		return
-	}
-
-	json, jsonerr := sjson.NewJson(resp.Raw().Bytes())
-	if jsonerr != nil {
-		SendVKMessage("Failed parsing server response.\n"+jsonerr.Error(), fromId)
-		return
-	}
-
-	if response, err := json.Get("response").StringArray(); err == nil {
-		if len(response) > 0 {
-			result := strings.Join(response, "\n")
-			SendVKMessage(result, fromId)
-		} else {
-			SendVKMessage("Command didn't return output.", fromId)
-		}
-
-		fmt.Println("id" + strconv.Itoa(fromId) + " executed " + text)
-	}
-
-}
-
-func SendVKMessage(text string, userId int) {
-	qs := &url.Values{}
-	qs.Add("message", text)
-	qs.Add("access_token", config.VKToken)
-	qs.Add("keyboard", config.VKKeyboard)
-	qs.Add("user_id", strconv.Itoa(userId))
-	qs.Add("random_id", strconv.Itoa(int(time.Now().UnixNano())))
-	qs.Add("v", "5.131")
-	resp, err := requests.Get("https://api.vk.com/method/messages.send", qs, nil)
+	r, err := qst.Get("https://api.vk.com/method/messages.send",
+		qst.QueryValue("access_token", token),
+		qst.QueryValue("message", message),
+		qst.QueryValue("peer_id", strconv.Itoa(peerId)),
+		qst.QueryValue("reply_to", strconv.Itoa(replyTo)),
+		qst.QueryValue("keyboard", kb),
+		qst.QueryValue("random_id", strconv.FormatInt(time.Now().UnixNano(), 10)),
+		qst.QueryValue("v", ApiVersion),
+	)
 	if err != nil {
-		fmt.Println("Error occured when sending VK message to id " + strconv.Itoa(userId) + ": " + text)
-		fmt.Println(err.Error())
-		fmt.Println(resp.Text())
+		return err
 	}
+
+	resp := struct {
+		Error map[any]any `json:"error"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		b, _ := json.Marshal(resp.Error)
+		return errors.New(string(b))
+	}
+
+	return nil
+}
+
+func ExecRESTCommand(restAddr, token, command string) (string, error) {
+	data := struct {
+		OutputLines []string `json:"response"`
+	}{}
+
+	resp, err := qst.Get(strings.TrimSuffix(restAddr, "/")+"/v3/server/rawcmd",
+		qst.QueryValue("token", token),
+		qst.QueryValue("cmd", command),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", err
+	}
+
+	return strings.Join(data.OutputLines, "\n"), nil
 }

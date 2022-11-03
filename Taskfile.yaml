@@ -1,0 +1,33 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  GIT_COMMIT:
+    sh: git log -n 1 --format=%h
+
+env:
+  CGO_ENABLED: 0
+
+tasks:
+  build-all:
+    cmds:
+      - task: build
+        vars: { GOOS: "windows", GOARCH: "amd64" }
+      - task: build
+        vars: { GOOS: "linux", GOARCH: "amd64" }
+      - task: build
+        vars: { GOOS: "windows", GOARCH: "arm64" }
+      - task: build
+        vars: { GOOS: "linux", GOARCH: "arm64" }
+
+  build:
+    cmds:
+      - go build -o dist/vkrc-{{.GOOS}}-{{.GOARCH}}{{if eq .GOOS "windows"}}.exe{{end}} -ldflags "-X main.version={{.GIT_COMMIT}}" .
+    vars:
+      GOOS: '{{default "windows" .GOOS}}'
+      GOARCH: '{{default "amd64" .GOARCH}}'
+
+  clean:
+    cmds:
+      - '{{if eq OS "windows"}}del{{else}}rm{{end}} ./dist/*'

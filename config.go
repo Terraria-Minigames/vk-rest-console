@@ -2,109 +2,115 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"errors"
+	"io"
+	"io/fs"
 	"os"
-	"strconv"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	Port                int
-	RestUrl             string
-	TShockConfig        string
-	VKUserTokens        map[int]string `json:"-"`
-	VKConfirmationToken string
-	VKSecret            string
-	VKKeyboard          string
-	VKToken             string
-}
+type (
+	Config struct {
+		Port             int    `yaml:"Port"`
+		TShockConfigPath string `yaml:"TShockConfigPath"`
+		CommandPrefix    string `yaml:"CommandPrefix,omitempty"`
+		RestAddr         string `yaml:"RestAddr,omitempty"` // If left empty, will default to "http://127.0.0.1:%d", where %d is filled from TShock config
+		RemoveChatTags   bool   `yaml:"RemoveChatTags"`
 
-type TShockConfig struct {
-	Settings struct {
-		ApplicationRestTokens map[string](map[string]int)
+		VK       ConfigVK       `yaml:"VK"`
+		Messages ConfigMessages `yaml:"Messages"`
 	}
-	ApplicationRestTokens map[string](map[string]int)
+
+	ConfigVK struct {
+		ConfirmationToken string `yaml:"ConfirmationToken"`
+		Secret            string `yaml:"Secret"`
+		Keyboard          any    `yaml:"Keyboard,omitempty"`
+		Token             string `yaml:"Token"`
+	}
+
+	ConfigMessages struct {
+		NoCommandOutput   string `yaml:"NoCommandOutput"`
+		RestRequestFailed string `yaml:"RestRequestFailed"`
+	}
+
+	TShockConfig struct {
+		RestApiEnabled        bool
+		RestApiPort           int
+		CommandSpecifier      string
+		ApplicationRestTokens map[string]struct {
+			Username      string
+			UserGroupName string
+			VKId          int
+		}
+	}
+)
+
+func ValidateConfigValues(c Config) error {
+	if c.TShockConfigPath == "" {
+		return errors.New("TShockConfigPath is not set. Make sure --config-path argument is right and TShockConfigPath is set there")
+	}
+	if c.VK.Token == "" {
+		return errors.New("VK group access token is not set in config")
+	}
+	return nil
 }
 
-func MakeDefaultConfig() Config {
+func LoadConfig(path string, shouldCreate bool) (Config, error) {
 	config := Config{
-		Port:                80,
-		RestUrl:             "http://localhost:7878",
-		TShockConfig:        "",
-		VKUserTokens:        make(map[int]string),
-		VKConfirmationToken: "",
-		VKSecret:            "",
-		VKKeyboard:          "",
-		VKToken:             "",
+		Port:           80,
+		RemoveChatTags: true,
+		Messages: ConfigMessages{
+			NoCommandOutput:   "Command didn't return anything.",
+			RestRequestFailed: "REST Api malfunction, check Terraria Server logs",
+		},
 	}
 
-	return config
-}
-
-func LoadConfig() Config {
-	config := MakeDefaultConfig()
-	file, err := os.Open("config.json")
-
+	file, err := os.Open(path)
+	if shouldCreate && errors.Is(err, fs.ErrNotExist) {
+		file, err = os.Create(path)
+		if err != nil {
+			return config, err
+		}
+		err = yaml.NewEncoder(file).Encode(&config)
+	}
 	if err != nil {
-		jsondata, _ := json.MarshalIndent(config, "", "\t")
-		ioutil.WriteFile("config.json", jsondata, 0644)
-		fmt.Println("Config not found. Created default.")
+		return config, err
 	}
-
 	defer file.Close()
 
-	jsondata, _ := ioutil.ReadAll(file)
-	json.Unmarshal(jsondata, &config)
-
-	if config.RestUrl == "" {
-		fmt.Println("RestUrl is not set")
-		os.Exit(2)
-	} else if config.TShockConfig == "" {
-		fmt.Println("TShockConfig is not set")
-		os.Exit(2)
-	} else if config.VKToken == "" {
-		fmt.Println("VKToken is not set")
-		os.Exit(2)
+	if err := yaml.NewDecoder(file).Decode(&config); err != nil {
+		return config, err
 	}
 
-	LoadTShockTokens(config.TShockConfig, &config)
-
-	// Make sure RestUrl does not end with /
-	config.RestUrl = strings.TrimSuffix(config.RestUrl, "/")
-
-	fmt.Println("Loaded config.")
-	return config
+	return config, nil
 }
 
-func LoadTShockTokens(path string, config *Config) {
+func LoadTShockConfig(path string) (TShockConfig, error) {
+	config := TShockConfig{}
+
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(2)
+		return TShockConfig{}, err
 	}
 	defer file.Close()
 
-	data, _ := ioutil.ReadAll(file)
-	var tshockConfig TShockConfig
-	json.Unmarshal(data, &tshockConfig)
-
-	// TShock changed config format in 4.5, so script needs to check both prior and newer config paths
-	var tokens map[string](map[string]int)
-	if len(tshockConfig.Settings.ApplicationRestTokens) != 0 {
-		tokens = tshockConfig.Settings.ApplicationRestTokens
-	} else {
-		tokens = tshockConfig.ApplicationRestTokens
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return config, err
 	}
 
-	for k, v := range tokens {
-		userId := v["VKId"]
+	// Reading post-4.5 TShock config format
+	if err := json.Unmarshal(data, &struct{ Settings *TShockConfig }{&config}); err != nil {
+		return config, err
+	}
 
-		if userId == 0 {
-			continue
+	// ApplicationRestTokens == nil means we didn't read anything, so it makes sense to fall back to pre-4.5 version format
+	if config.ApplicationRestTokens == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return config, err
 		}
-
-		fmt.Println("Loaded tshock token for " + strconv.Itoa(userId))
-		config.VKUserTokens[userId] = k
 	}
+
+	return config, nil
 }
